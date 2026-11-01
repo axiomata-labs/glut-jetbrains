@@ -29,14 +29,14 @@ anywhere in the project's folder finds the IDE.
 
 ## Actions
 
-*Open Glut* has the key ⌘Esc (Ctrl+Esc on Linux and Windows), the Glut tool window on the right side bar (its window
-has the buttons), a flame in the main toolbar and one in the status bar; bind the other actions under *Settings ▸
-Keymap ▸ Plug-ins ▸ Glut* the way you like. What you select goes to Glut with your next message by itself; *Send
-Selection* only names it in your text.
+*Open Glut* has the key **⌥⌘G** (Ctrl+Alt+G on Linux and Windows), which from Glut goes back to the file, the Glut tool
+window on the right side bar (its window has the buttons), a flame in the main toolbar and one in the status bar; bind
+the other actions under *Settings ▸ Keymap ▸ Plug-ins ▸ Glut* the way you like. What you select goes to Glut with your
+next message by itself; *Send Selection* only names it in your text.
 
 | Action | Where | What it does |
 |---|---|---|
-| *Open Glut* | Tools ▸ Glut, ⌘Esc, the flame | Glut in the IDE's terminal: opens it, or shows the one there is |
+| *Open Glut* | Tools ▸ Glut, ⌥⌘G, the flame | Glut in the IDE's terminal: opens it, or shows the one there is |
 | *Send Selection to Glut* | Tools ▸ Glut, the editor's menu | the selected lines as `@path#L10-22` in Glut's input |
 | *Add File to Glut* | Tools ▸ Glut, the editor's and the project view's menu | the file as `@path` in Glut's input |
 

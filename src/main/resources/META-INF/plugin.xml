@@ -36,10 +36,10 @@
         <group id="Glut.Menu" text="Glut" popup="true">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <action id="Glut.Open" class="dev.glut.jetbrains.OpenGlut" text="Open Glut" icon="/icons/glut.svg"
-                    description="Glut in the IDE's terminal: opens it, or shows the one there is">
-                <keyboard-shortcut keymap="$default" first-keystroke="ctrl ESCAPE"/>
-                <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta ESCAPE" replace-all="true"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta ESCAPE" replace-all="true"/>
+                    description="Glut in the IDE's terminal: opens it, or shows the one there is; from Glut back to the file">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt G"/>
+                <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt meta G" replace-all="true"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt meta G" replace-all="true"/>
                 <add-to-group group-id="MainToolbarRight" anchor="first"/>
                 <add-to-group group-id="NavBarToolBar" anchor="first"/>
             </action>

@@ -87,6 +87,12 @@ class Glut(private val project: Project) : Disposable {
     }
 
     /** Opens Glut in the IDE's terminal, or shows the one there is; whether it was just started. */
+    /** Whether Glut's terminal is the tab in front of the terminal's window. */
+    fun isShown(): Boolean {
+        val running = terminal ?: return false
+        return running in TerminalToolWindowManager.getInstance(project).terminalWidgets && running.component.isShowing
+    }
+
     fun open(): Boolean {
         listen()
         // A tab closed without its process ending tells nothing: it is gone once the terminal no longer lists it.
@@ -157,8 +163,15 @@ class OpenGlut : AnAction() {
         event.presentation.isEnabled = event.project != null
     }
 
+    /** From a file to Glut, and from Glut's terminal back to the file. */
     override fun actionPerformed(event: AnActionEvent) {
-        event.project?.service<Glut>()?.open()
+        val project = event.project ?: return
+        val windows = ToolWindowManager.getInstance(project)
+        if (windows.activeToolWindowId == "Terminal" && project.service<Glut>().isShown()) {
+            windows.activateEditorComponent()
+        } else {
+            project.service<Glut>().open()
+        }
     }
 }
 
