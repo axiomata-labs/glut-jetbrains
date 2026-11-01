@@ -27,6 +27,10 @@
         <toolWindow id="Glut" anchor="right" icon="/icons/glut.svg" factoryClass="dev.glut.jetbrains.GlutToolWindow"/>
     </extensions>
 
+    <extensions defaultExtensionNs="org.jetbrains.plugins.terminal">
+        <allowedActionsProvider implementation="dev.glut.jetbrains.GlutTerminalKeys"/>
+    </extensions>
+
     <projectListeners>
         <listener class="dev.glut.jetbrains.GlutToolWindowShown"
                   topic="com.intellij.openapi.wm.ex.ToolWindowManagerListener"/>

@@ -220,3 +220,9 @@ class AddFile : AnAction() {
         glut.reference(file)?.let { glut.typeIntoGlut("@$it ") }
     }
 }
+
+/** ⌥⌘G reaches the IDE from Glut's terminal too, which otherwise keeps a key for the program in it. */
+@Suppress("UnstableApiUsage")
+class GlutTerminalKeys : com.intellij.terminal.frontend.view.TerminalAllowedActionsProvider {
+    override fun getActionIds() = listOf("Glut.Open")
+}
