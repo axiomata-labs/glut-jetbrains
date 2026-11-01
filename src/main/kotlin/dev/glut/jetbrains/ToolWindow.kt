@@ -7,12 +7,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
-import com.intellij.ui.components.JBLabel
 import com.intellij.ui.content.ContentFactory
+import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
-import java.awt.FlowLayout
-import javax.swing.BoxLayout
-import javax.swing.JButton
+import java.awt.BorderLayout
 import javax.swing.JPanel
 
 /** The tool window's id, as plugin.xml names it. */
@@ -24,37 +22,29 @@ private const val TOOL_WINDOW_ID = "Glut"
  */
 class GlutToolWindow : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val panel = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(8)
-        }
-        panel.add(JBLabel("<html>Glut runs in the IDE's terminal; this flame brings it to the front.</html>"))
-        panel.add(row(button("Open Glut") { project.service<Glut>().open() }))
-        panel.add(
-            JBLabel(
-                "<html>What you select in a file goes to Glut with your next message by itself. To name it in your " +
-                    "text:</html>",
-            ),
-        )
-        panel.add(
-            row(
+        val glut = project.service<Glut>()
+        val content = panel {
+            row { text("Glut runs in the IDE's terminal; this flame brings it to the front.") }
+            row { button("Open Glut") { glut.open() } }
+            separator()
+            row {
+                text("What you select in a file goes to Glut with your next message by itself. To name it in your text:")
+            }
+            row {
                 button("Send Selection to Glut") {
                     val editor = FileEditorManager.getInstance(project).selectedTextEditor
                     if (editor?.selectionModel?.hasSelection() == true) sendSelection(project, editor)
-                },
+                }
                 button("Add File to Glut") {
                     val file = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
-                    val glut = project.service<Glut>()
                     file?.let(glut::reference)?.let { glut.typeIntoGlut("@$it ") }
-                },
-            ),
-        )
-        toolWindow.contentManager.addContent(ContentFactory.getInstance().createContent(panel, "", false))
+                }
+            }
+        }.apply { border = JBUI.Borders.empty(4, 8) }
+        // The form stands at the window's top, not stretched over its height.
+        val top = JPanel(BorderLayout()).apply { add(content, BorderLayout.NORTH) }
+        toolWindow.contentManager.addContent(ContentFactory.getInstance().createContent(top, "", false))
     }
-
-    private fun row(vararg buttons: JButton) = JPanel(FlowLayout(FlowLayout.LEFT)).apply { buttons.forEach(::add) }
-
-    private fun button(text: String, onClick: () -> Unit) = JButton(text).apply { addActionListener { onClick() } }
 }
 
 /** A click on the flame shows the window and brings Glut to the front, as the editors' buttons do. */
