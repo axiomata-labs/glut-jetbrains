@@ -1,0 +1,46 @@
+<idea-plugin>
+    <id>dev.glut.jetbrains</id>
+    <name>Glut</name>
+    <vendor url="https://github.com/NamorX68">Roman Thimian</vendor>
+    <description><![CDATA[
+    <p>Glut beside your JetBrains IDE. Glut — a terminal coding agent with its own sandbox, gate and sessions — runs in
+    the IDE's terminal (or in any terminal in the project's folder), and this plugin tells it what you work on:</p>
+    <ul>
+      <li>the file, the cursor and the selection, with each of your messages;</li>
+      <li>your documents as the IDE holds them, unsaved changes too;</li>
+      <li>Glut's questions about edits as the IDE's own diffs, whose right side you may change before you accept;</li>
+      <li>what is open and what the inspections find, for Glut's model to ask.</li>
+    </ul>
+    <p>It listens on 127.0.0.1 only, behind a fresh random token in <code>~/.glut/ide/&lt;port&gt;.json</code>, readable
+    by you alone.</p>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="dev.glut.jetbrains.GlutStartup"/>
+        <notificationGroup id="Glut" displayType="BALLOON"/>
+        <applicationConfigurable parentId="tools" instance="dev.glut.jetbrains.GlutConfigurable"
+                                 id="dev.glut.settings" displayName="Glut"/>
+    </extensions>
+
+    <actions>
+        <group id="Glut.Menu" text="Glut" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <action id="Glut.Open" class="dev.glut.jetbrains.OpenGlut" text="Open Glut"
+                    description="Glut in the IDE's terminal: opens it, or shows the one there is"/>
+            <action id="Glut.Send" class="dev.glut.jetbrains.SendSelection" text="Send Selection to Glut"
+                    description="The selected lines as @path#L10-22 in Glut's input"/>
+            <action id="Glut.Add" class="dev.glut.jetbrains.AddFile" text="Add File to Glut"
+                    description="The current file as @path in Glut's input"/>
+        </group>
+        <reference ref="Glut.Send">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </reference>
+        <reference ref="Glut.Add">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </reference>
+    </actions>
+</idea-plugin>
