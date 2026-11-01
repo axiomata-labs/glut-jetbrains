@@ -23,13 +23,20 @@
         <notificationGroup id="Glut" displayType="BALLOON"/>
         <applicationConfigurable parentId="tools" instance="dev.glut.jetbrains.GlutConfigurable"
                                  id="dev.glut.settings" displayName="Glut"/>
+        <statusBarWidgetFactory id="dev.glut.status" implementation="dev.glut.jetbrains.GlutStatusFactory"/>
     </extensions>
 
     <actions>
         <group id="Glut.Menu" text="Glut" popup="true">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
-            <action id="Glut.Open" class="dev.glut.jetbrains.OpenGlut" text="Open Glut"
-                    description="Glut in the IDE's terminal: opens it, or shows the one there is"/>
+            <action id="Glut.Open" class="dev.glut.jetbrains.OpenGlut" text="Open Glut" icon="/icons/glut.svg"
+                    description="Glut in the IDE's terminal: opens it, or shows the one there is">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl ESCAPE"/>
+                <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta ESCAPE" replace-all="true"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta ESCAPE" replace-all="true"/>
+                <add-to-group group-id="MainToolbarRight" anchor="first"/>
+                <add-to-group group-id="NavBarToolBar" anchor="first"/>
+            </action>
             <action id="Glut.Send" class="dev.glut.jetbrains.SendSelection" text="Send Selection to Glut"
                     description="The selected lines as @path#L10-22 in Glut's input"/>
             <action id="Glut.Add" class="dev.glut.jetbrains.AddFile" text="Add File to Glut"

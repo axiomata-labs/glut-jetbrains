@@ -29,11 +29,12 @@ anywhere in the project's folder finds the IDE.
 
 ## Actions
 
-The plugin binds no keys; bind the actions under *Settings ▸ Keymap ▸ Plug-ins ▸ Glut* the way you like.
+*Open Glut* has the key ⌘Esc (Ctrl+Esc on Linux and Windows), a flame in the main toolbar and one in the status bar;
+bind the other actions under *Settings ▸ Keymap ▸ Plug-ins ▸ Glut* the way you like.
 
 | Action | Where | What it does |
 |---|---|---|
-| *Open Glut* | Tools ▸ Glut | Glut in the IDE's terminal: opens it, or shows the one there is |
+| *Open Glut* | Tools ▸ Glut, ⌘Esc, the flame | Glut in the IDE's terminal: opens it, or shows the one there is |
 | *Send Selection to Glut* | Tools ▸ Glut, the editor's menu | the selected lines as `@path#L10-22` in Glut's input |
 | *Add File to Glut* | Tools ▸ Glut, the editor's and the project view's menu | the file as `@path` in Glut's input |
 
