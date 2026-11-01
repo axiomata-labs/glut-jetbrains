@@ -30,7 +30,7 @@ kotlin {
     jvmToolchain(25)
 }
 
-// Built with the IDE's own Java, for the oldest IDE it runs on: 2025.1, whose Java is 21.
+// Built with the IDE's own Java, for Java 21: the platform's level since 2024.2.
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_21)
@@ -46,11 +46,12 @@ java {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "251"
+            // Verified against 2026.2 alone: older lines are claimed once the verifier ran against them.
+            sinceBuild = "262"
         }
     }
     pluginVerification {
-        // Deprecated API is allowed (the terminal's tab API reaching back to 2025.1); internal or missing API is not.
+        // Deprecated API is allowed (the terminal's public tab API); internal or missing API is not.
         failureLevel = listOf(
             org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
             org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.INTERNAL_API_USAGES,

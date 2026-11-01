@@ -1,6 +1,6 @@
 # Glut for JetBrains IDEs
 
-Glut beside PyCharm, IntelliJ IDEA, RustRover, WebStorm and the other JetBrains IDEs (2025.1 or later). Glut — a
+Glut beside PyCharm, IntelliJ IDEA, RustRover, WebStorm and the other JetBrains IDEs (2026.2 or later). Glut — a
 terminal coding agent with its own sandbox, gate and sessions — runs in the IDE's terminal (or in any terminal in the
 project's folder), and this plugin tells it what you work on:
 

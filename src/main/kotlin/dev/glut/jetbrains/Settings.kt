@@ -16,6 +16,25 @@ object Settings {
     fun command(): String = PropertiesComponent.getInstance().getValue(COMMAND, "glut").ifBlank { "glut" }
 
     fun setCommand(command: String) = PropertiesComponent.getInstance().setValue(COMMAND, command.trim(), "glut")
+
+    /** The places `glut` is installed to (`cargo install`, Homebrew, `scripts/install.sh`'s link), first found first. */
+    private val PLACES = listOf(".cargo/bin", "/opt/homebrew/bin", "/usr/local/bin")
+
+    /**
+     * The program to start: the setting as given where it names a path or another program; plain `glut` resolved to
+     * where it is installed — never left to the terminal's PATH, which a project's own environment (a virtualenv,
+     * `node_modules/.bin`) may lead first.
+     */
+    fun program(): String {
+        val command = command()
+        if (command != "glut") return command
+        val home = System.getProperty("user.home")
+        return PLACES.map { if (it.startsWith("/")) java.nio.file.Path.of(it, "glut") else java.nio.file.Path.of(home, it, "glut") }
+            .firstOrNull { java.nio.file.Files.isExecutable(it) }
+            ?.toString()
+            ?.let { "'" + it.replace("'", "'\\''") + "'" }
+            ?: command
+    }
 }
 
 class GlutConfigurable : Configurable {

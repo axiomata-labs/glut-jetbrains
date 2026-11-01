@@ -60,9 +60,18 @@ fun asProposed(text: String, proposed: String): String {
     return out
 }
 
-/** Text as the IDE shows it in a notification, as plain words: no markup, no control, bidi or zero-width character. */
-fun shownPlainly(text: String): String =
-    XmlStringUtil.escapeString(text.replace(Regex("[\\u0000-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069\\ufeff]"), " "))
+/** Every character that is no plain visible one: controls, formats (bidi, zero-width), separators but the space. */
+private val UNPLAIN = Regex("[\\p{C}\\p{Zl}\\p{Zp}]")
+
+/** Text as the IDE shows it in a title, as plain words: no control, bidi or zero-width character, at most 200. */
+fun plainly(text: String): String {
+    val spaced = text.replace(UNPLAIN, " ")
+    val points = spaced.codePoints().limit(200).toArray()
+    return String(points, 0, points.size)
+}
+
+/** Text as the IDE shows it in a notification, which reads markup: [plainly], escaped. */
+fun shownPlainly(text: String): String = XmlStringUtil.escapeString(plainly(text))
 
 /** A path as the disk names it: links resolved where the file is there. */
 private fun real(path: Path): Path = runCatching { path.toRealPath() }.getOrDefault(path.toAbsolutePath().normalize())
@@ -85,6 +94,8 @@ class IdeEditor(private val project: Project) : Editor, com.intellij.openapi.Dis
     )
 
     private val diffs = ConcurrentHashMap<String, Shown>()
+    /** Diffs asked for and not yet shown, by id: closed before they show, they answer `closed` and never show. */
+    private val coming = ConcurrentHashMap<String, (DiffAnswer) -> Unit>()
     /** The last editor of a file on disk the owner had in front: theirs, while they type in Glut's terminal. */
     @Volatile
     private var lastFile: VirtualFile? = null
@@ -103,14 +114,14 @@ class IdeEditor(private val project: Project) : Editor, com.intellij.openapi.Dis
                     val id = diffs.entries.firstOrNull { it.value.file == file }?.key ?: return
                     ApplicationManager.getApplication().invokeLater({
                         if (!FileEditorManager.getInstance(project).isFileOpen(file)) settle(id, DiffAnswer.CLOSED)
-                    }, ModalityState.any())
+                    }, ModalityState.nonModal(), project.disposed)
                 }
             },
         )
     }
 
     override fun dispose() {
-        diffs.keys.toList().forEach(::closeDiff)
+        (coming.keys + diffs.keys).toList().forEach(::closeDiff)
     }
 
     /** `block` on the IDE's event thread, waited for: the editors' state is read there. */
@@ -134,20 +145,19 @@ class IdeEditor(private val project: Project) : Editor, com.intellij.openapi.Dis
     override fun activeFile(): ActiveFile? = onEdt {
         val editor = currentEditor() ?: return@onEdt null
         val file = FileDocumentManager.getInstance().getFile(editor.document) ?: return@onEdt null
-        val caret = editor.caretModel.logicalPosition
+        val document = editor.document
+        // Characters, not columns: a tab is one character, however wide the editor draws it.
+        fun at(offset: Int): Position {
+            val line = document.getLineNumber(offset)
+            return Position(line + 1, offset - document.getLineStartOffset(line) + 1)
+        }
         val selection = editor.selectionModel
         val selected = if (selection.hasSelection()) {
-            val start = editor.offsetToLogicalPosition(selection.selectionStart)
-            val end = editor.offsetToLogicalPosition(selection.selectionEnd)
-            Selection(
-                Position(start.line + 1, start.column + 1),
-                Position(end.line + 1, end.column + 1),
-                cut(selection.selectedText ?: "", MOST_SELECTED),
-            )
+            Selection(at(selection.selectionStart), at(selection.selectionEnd), cut(selection.selectedText ?: "", MOST_SELECTED))
         } else {
             null
         }
-        ActiveFile(file.path, Position(caret.line + 1, caret.column + 1), selected)
+        ActiveFile(file.path, at(editor.caretModel.offset), selected)
     }
 
     override fun openFiles(): List<OpenFile> = onEdt {
@@ -163,8 +173,11 @@ class IdeEditor(private val project: Project) : Editor, com.intellij.openapi.Dis
         val asked = runCatching { Path.of(path) }.getOrNull() ?: return null
         if (!asked.isAbsolute) return null
         val wanted = real(asked)
+        // Only files of that name are resolved on disk: the event thread waits on no disk for the others.
+        val name = wanted.fileName?.toString() ?: return null
         val file = FileEditorManager.getInstance(project).openFiles.firstOrNull {
-            it.isInLocalFileSystem && real(it.toNioPath()) == wanted
+            it.isInLocalFileSystem && (it.name == name || it.name == asked.fileName?.toString()) &&
+                real(it.toNioPath()) == wanted
         } ?: return null
         // A document the IDE holds already: none is loaded for Glut.
         val document = FileDocumentManager.getInstance().getCachedDocument(file) ?: return null
@@ -181,6 +194,8 @@ class IdeEditor(private val project: Project) : Editor, com.intellij.openapi.Dis
 
     override fun diagnostics(path: String): Pair<String, List<Diagnostic>>? = onEdt {
         val (file, document) = opened(path) ?: return@onEdt null
+        // The inspections run on files on screen: of another, "nothing found" would be no finding but a guess.
+        if (file !in FileEditorManager.getInstance(project).selectedFiles) return@onEdt null
         val found = ApplicationManager.getApplication().runReadAction(Computable {
             val markup = DocumentMarkupModel.forDocument(document, project, false) ?: return@Computable emptyList()
             markup.allHighlighters.mapNotNull { HighlightInfo.fromRangeHighlighter(it) }
@@ -205,14 +220,23 @@ class IdeEditor(private val project: Project) : Editor, com.intellij.openapi.Dis
     }
 
     override fun openDiff(request: DiffRequest, answer: (DiffAnswer) -> Unit) {
+        coming[request.id] = answer
         ApplicationManager.getApplication().invokeLater({
+            // Closed before it could show: it answered already.
+            val waiting = coming.remove(request.id) ?: return@invokeLater
             try {
-                show(request, answer)
-            } catch (_: Exception) {
+                show(request, waiting)
+            } catch (failure: Throwable) {
                 // A diff that could not be shown asks nothing.
-                answer(DiffAnswer.CLOSED)
+                diffs.remove(request.id)
+                waiting(DiffAnswer.CLOSED)
+                if (failure is Error) throw failure
             }
-        }, ModalityState.any())
+        }, ModalityState.nonModal()) {
+            // The project went before the diff could show: its question answers `closed`.
+            if (project.isDisposed) coming.remove(request.id)?.invoke(DiffAnswer.CLOSED)
+            project.isDisposed
+        }
     }
 
     private fun show(request: DiffRequest, answer: (DiffAnswer) -> Unit) {
@@ -221,13 +245,15 @@ class IdeEditor(private val project: Project) : Editor, com.intellij.openapi.Dis
         val factory = DiffContentFactory.getInstance()
         val left = factory.create(project, StringUtil.convertLineSeparators(request.oldText ?: ""), type)
         val loaded = StringUtil.convertLineSeparators(request.newText)
+        // A rename's file takes no change of the owner's: it replaces the old name or nothing. Nor does a file whose
+        // line endings the document cannot give back as they were (lone or mixed): every line would read as changed.
+        val editable = request.editable && asProposed(loaded, request.newText) == request.newText
         val document = EditorFactory.getInstance().createDocument(loaded)
-        // A rename's file takes no change of the owner's: it replaces the old name or nothing.
-        document.setReadOnly(!request.editable)
+        document.setReadOnly(!editable)
         val right = factory.create(project, document, type)
         left.putUserData(DiffUserDataKeys.FORCE_READ_ONLY, true)
-        val title = request.title.ifEmpty { name }
-        val diff = SimpleDiffRequest("Glut: $title", left, right, "Now", if (request.editable) "Glut's change — yours to change" else "Glut's change")
+        val title = plainly(request.title.ifEmpty { name })
+        val diff = SimpleDiffRequest("Glut: $title", left, right, "Now", if (editable) "Glut's change — yours to change" else "Glut's change")
         val id = request.id
         diff.putUserData(
             DiffUserDataKeys.CONTEXT_ACTIONS,
@@ -241,9 +267,10 @@ class IdeEditor(private val project: Project) : Editor, com.intellij.openapi.Dis
             ),
         )
         val file = ChainDiffVirtualFile(SimpleDiffRequestChain(diff), "Glut: $title")
-        diffs[id] = Shown(file, document, loaded, request.newText, request.editable, answer)
-        // The owner types in Glut's terminal: the diff shows without the focus, so no key meant for Glut lands in it.
-        DiffEditorTabFilesManager.getInstance(project).showDiffFile(file, false)
+        diffs[id] = Shown(file, document, loaded, request.newText, editable, answer)
+        // The owner types in Glut's terminal: the diff shows without the focus, so no key meant for Glut lands in it —
+        // as a tab, never a window of its own that would take the focus.
+        DiffEditorTabFilesManager.getInstance(project).showDiffFile(file, false, true)
         notifyOwner("Glut asks about a change of $name.")
     }
 
@@ -257,18 +284,19 @@ class IdeEditor(private val project: Project) : Editor, com.intellij.openapi.Dis
     }
 
     private fun settle(id: String, answer: DiffAnswer) {
+        coming.remove(id)?.let { return it(answer) }
         val shown = diffs.remove(id) ?: return
         shown.answer(answer)
         ApplicationManager.getApplication().invokeLater({
             FileEditorManager.getInstance(project).closeFile(shown.file)
-        }, ModalityState.any())
+        }, ModalityState.nonModal(), project.disposed)
     }
 
     override fun closeDiff(id: String) = settle(id, DiffAnswer.CLOSED)
 
     override fun changed(paths: List<String>) {
         // The IDE reads the files again where no unsaved change stands.
-        LocalFileSystem.getInstance().refreshNioFiles(paths.mapNotNull { runCatching { Path.of(it) }.getOrNull() })
+        LocalFileSystem.getInstance().refreshNioFiles(paths.mapNotNull { runCatching { Path.of(it) }.getOrNull() }, true, false, null)
     }
 
     override fun notify(message: String) = notifyOwner("Glut: $message")

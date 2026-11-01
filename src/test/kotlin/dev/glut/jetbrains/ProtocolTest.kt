@@ -55,7 +55,7 @@ class ProtocolTest {
         val diffs = Diffs(editor)
         server = Server(secret, { message, respond, connection ->
             handle(editor, diffs, "0.1.0", "PyCharm", message, respond, connection)
-        }, { connection -> diffs.ended(connection) }, idleMs = 300)
+        }, { connection -> diffs.ended(connection) }, idleMs = 300, unprovenMs = 300)
         server.start()
     }
 
@@ -199,5 +199,33 @@ class ProtocolTest {
         assertEquals(parsed, Json.parse(Json.write(parsed)))
         assertTrue(runCatching { Json.parse("[".repeat(100) + "]".repeat(100)) }.isFailure, "too deep is no message")
         assertTrue(runCatching { Json.parse("{} x") }.isFailure)
+    }
+
+    @Test
+    fun `a stranger who trickles a head byte by byte is let go by the deadline`() {
+        Socket("127.0.0.1", server.port).use { socket ->
+            socket.soTimeout = 3000
+            val out = socket.getOutputStream()
+            val started = System.currentTimeMillis()
+            val closed = runCatching {
+                repeat(20) {
+                    out.write('X'.code)
+                    out.flush()
+                    Thread.sleep(100)
+                }
+            }.isFailure || socket.getInputStream().read() == -1
+            assertTrue(closed, "the editor let the connection go")
+            assertTrue(System.currentTimeMillis() - started < 2500)
+        }
+    }
+
+    @Test
+    fun `the owner's text keeps the proposed line endings and BOM, and text shown plainly carries no markup`() {
+        assertEquals("a\r\nb\r\n", asProposed("a\nb\n", "x\r\ny\r\n"))
+        assertEquals("\uFEFFa\n", asProposed("a\n", "\uFEFFx\n"))
+        assertTrue(asProposed("a\nb", "x\ry") != "x\ry", "lone CRs cannot come back: such a diff is shown read-only")
+        assertEquals("ää", cut("äää", 4))
+        assertEquals("a b c", plainly("a\u202eb\u200bc"))
+        assertEquals("&lt;b&gt;x&lt;/b&gt;", shownPlainly("<b>x</b>"))
     }
 }

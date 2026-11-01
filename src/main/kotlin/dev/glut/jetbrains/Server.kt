@@ -25,6 +25,8 @@ class Server(
     private val closed: (connection: Int) -> Unit,
     /** How long a connection may be idle; shorter in the tests. */
     private val idleMs: Int = IDLE_MS,
+    /** How long it may take to show the token; shorter in the tests. */
+    private val unprovenMs: Int = UNPROVEN_MS,
 ) {
     companion object {
         /** The largest request body taken: a file's proposed text, not a disk. */
@@ -35,6 +37,8 @@ class Server(
         const val MOST_CONNECTIONS = 32
         /** How long a connection may say nothing, with no question of its own waiting, before it is closed. */
         const val IDLE_MS = 60 * 1000
+        /** How long a connection may take to show the token at all: a stranger holds no slot for long. */
+        const val UNPROVEN_MS = 10 * 1000
 
         private val REASONS = mapOf(
             200 to "OK", 202 to "Accepted", 400 to "Bad Request", 401 to "Unauthorized",
@@ -72,7 +76,10 @@ class Server(
         }
     }
 
-    private val socket = ServerSocket(0, 64, InetAddress.getLoopbackAddress())
+    private val socket = ServerSocket(0, 64, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)))
+    /** Answers are written here, never on the thread that gives them — the IDE's event thread must not wait on a socket. */
+    // Each answer its own thread: one connection whose reader is stuck never holds back another's.
+    private val writer = java.util.concurrent.Executors.newCachedThreadPool { Thread(it, "glut-answers").apply { isDaemon = true } }
     private val connections = AtomicInteger(0)
     private val ids = AtomicInteger(0)
     private val open = java.util.Collections.synchronizedSet(HashSet<Socket>())
@@ -96,13 +103,14 @@ class Server(
                 connections.incrementAndGet()
                 open.add(client)
                 val connection = ids.incrementAndGet()
-                Thread.ofVirtual().name("glut-connection-$connection").start { serve(client, connection) }
+                Thread.ofPlatform().daemon().name("glut-connection-$connection").start { serve(client, connection) }
             }
         }
     }
 
     fun stop() {
         runCatching { socket.close() }
+        writer.shutdown()
         synchronized(open) { open.toList() }.forEach { runCatching { it.close() } }
     }
 
@@ -120,15 +128,20 @@ class Server(
     private fun serve(client: Socket, connection: Int) {
         // Questions of this connection still waiting for their answer (a diff waits for the owner): no idleness then.
         val pending = AtomicInteger(0)
+        var proven = false
+        // Until a head with the token came, a short deadline for the whole head, not for each byte.
+        val unprovenBy = System.nanoTime() + unprovenMs * 1_000_000L
         try {
-            client.soTimeout = idleMs
+            client.soTimeout = unprovenMs
             val input = BufferedInputStream(client.getInputStream())
             val out = client.getOutputStream()
+            val partial = ByteArrayOutputStream()
             while (true) {
                 val head = try {
-                    readHead(input) ?: return
+                    readHead(input, partial, if (proven) null else unprovenBy) ?: return
                 } catch (_: SocketTimeoutException) {
-                    if (pending.get() > 0) continue else return
+                    // A head half read stays in `partial` for the next try.
+                    if (proven && pending.get() > 0) continue else return
                 }
                 if (head == "") {
                     reply(out, 413, "")
@@ -147,6 +160,10 @@ class Server(
                 if (parsed.method != "POST" || parsed.path != "/mcp") {
                     reply(out, 404, "")
                     return
+                }
+                if (!proven) {
+                    proven = true
+                    client.soTimeout = idleMs
                 }
                 val body = input.readNBytes(parsed.length)
                 if (body.size < parsed.length) return
@@ -177,7 +194,8 @@ class Server(
                     } else {
                         answer["result"] = result ?: emptyMap<String, Any?>()
                     }
-                    runCatching { reply(out, 200, Json.write(answer)) }
+                    val written = Json.write(answer)
+                    runCatching { writer.execute { runCatching { reply(out, 200, written) } } }
                 }
                 try {
                     handle(typed, respond, connection)
@@ -195,19 +213,26 @@ class Server(
         }
     }
 
-    /** The head of the next request, without its blank line; `null` at the connection's end, `""` when too long. */
-    private fun readHead(input: BufferedInputStream): String? {
-        val head = ByteArrayOutputStream()
-        var matched = 0
-        val end = byteArrayOf('\r'.code.toByte(), '\n'.code.toByte(), '\r'.code.toByte(), '\n'.code.toByte())
+    /**
+     * The head of the next request, without its blank line, read into `head` (kept across a timeout); `null` at the
+     * connection's end or past `deadline` (nanoseconds), `""` when too long.
+     */
+    private fun readHead(input: BufferedInputStream, head: ByteArrayOutputStream, deadline: Long?): String? {
         while (true) {
+            if (deadline != null && System.nanoTime() > deadline) return null
             val byte = input.read()
             if (byte < 0) return null
             head.write(byte)
-            matched = if (byte.toByte() == end[matched]) matched + 1 else if (byte.toByte() == end[0]) 1 else 0
-            if (matched == 4) {
-                val text = head.toString(Charsets.ISO_8859_1)
-                return text.substring(0, text.length - 4)
+            // The blank line ends the head: tested by its last byte first, so the head is read in one pass.
+            if (byte == '\n'.code && head.size() >= 4) {
+                val all = head.toByteArray()
+                val bytes = all.size
+                if (all[bytes - 4] == '\r'.code.toByte() && all[bytes - 3] == '\n'.code.toByte() &&
+                    all[bytes - 2] == '\r'.code.toByte()
+                ) {
+                    head.reset()
+                    return String(all, 0, bytes - 4, Charsets.ISO_8859_1)
+                }
             }
             if (head.size() > MAX_HEAD) return ""
         }

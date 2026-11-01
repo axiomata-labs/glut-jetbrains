@@ -29,10 +29,11 @@ object LockFile {
         val names = runCatching { Files.list(folder).use { it.toList() } }.getOrDefault(emptyList())
         for (file in names) {
             if (!Regex("^\\d+\\.json$").matches(file.fileName.toString())) continue
+            // Only a file read whole whose process is gone: one half written, or of a newer kind, is another editor's.
             val pid = runCatching {
                 (Json.parse(Files.readString(file)) as? Map<*, *>)?.get("pid") as? Number
-            }.getOrNull()?.toLong()
-            val alive = pid != null && ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
+            }.getOrNull()?.toLong() ?: continue
+            val alive = pid > 0 && ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
             if (!alive) runCatching { Files.deleteIfExists(file) }
         }
     }
@@ -63,7 +64,12 @@ object LockFile {
             setOf(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS),
             PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")),
         ).use { it.write(java.nio.ByteBuffer.wrap(text.toByteArray(Charsets.UTF_8))) }
-        Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        try {
+            Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            // A move that failed leaves no copy of the token behind.
+            Files.deleteIfExists(temporary)
+        }
         return file
     }
 

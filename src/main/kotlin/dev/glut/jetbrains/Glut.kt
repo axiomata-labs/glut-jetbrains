@@ -41,9 +41,11 @@ class Glut(private val project: Project) : Disposable {
     private var diffs: Diffs? = null
     private var terminal: TerminalWidget? = null
 
-    /** Starts listening, once. */
+    /** Starts listening, once — on a system with POSIX permissions alone, as Glut runs on (its lock file is 0600). */
+    @Synchronized
     fun listen() {
         if (server != null) return
+        if ("posix" !in java.nio.file.FileSystems.getDefault().supportedFileAttributeViews()) return
         val ide = IdeEditor(project).also { Disposer.register(this, it) }
         val waiting = Diffs(ide)
         val secret = LockFile.token()
@@ -66,7 +68,11 @@ class Glut(private val project: Project) : Disposable {
 
     /** The folders the project works in: its base and its content roots, where they really are. */
     private fun folders(): List<String> {
-        val roots = ProjectRootManager.getInstance(project).contentRoots.filter { it.isInLocalFileSystem }.map { it.path }
+        val roots = com.intellij.openapi.application.ApplicationManager.getApplication().runReadAction(
+            com.intellij.openapi.util.Computable {
+                ProjectRootManager.getInstance(project).contentRoots.filter { it.isInLocalFileSystem }.map { it.path }
+            },
+        )
         return (listOfNotNull(project.basePath) + roots).distinct().map {
             runCatching { Path.of(it).toRealPath().toString() }.getOrDefault(it)
         }
@@ -82,7 +88,9 @@ class Glut(private val project: Project) : Disposable {
     /** Opens Glut in the IDE's terminal, or shows the one there is; whether it was just started. */
     fun open(): Boolean {
         listen()
-        val running = terminal
+        // A tab closed without its process ending tells nothing: it is gone once the terminal no longer lists it.
+        val running = terminal?.takeIf { it in TerminalToolWindowManager.getInstance(project).terminalWidgets }
+        if (running == null) terminal = null
         if (running != null) {
             ToolWindowManager.getInstance(project).getToolWindow("Terminal")?.show()
             running.requestFocus()
@@ -90,11 +98,11 @@ class Glut(private val project: Project) : Disposable {
         }
         val port = server?.port ?: return false
         // The owner's own shell, as their terminals start it, finds `glut` on their PATH; it gives way to Glut. The
-        // terminal's newer tab builder is experimental and only in 2026.x: this one reaches back to 2025.1.
+        // terminal's newer tab builder is still experimental: this one is the public way, deprecated or not.
         @Suppress("DEPRECATION")
         val widget = TerminalToolWindowManager.getInstance(project)
             .createShellWidget(project.basePath ?: System.getProperty("user.home"), "Glut", true, true)
-        widget.sendCommandToExecute("GLUT_IDE_PORT=$port exec ${Settings.command()}")
+        widget.sendCommandToExecute("GLUT_IDE_PORT=$port exec ${Settings.program()}")
         terminal = widget
         widget.addTerminationCallback({ if (terminal === widget) terminal = null }, this)
         return true
@@ -119,6 +127,9 @@ class Glut(private val project: Project) : Disposable {
         }
     }
 
+    /** Every character a reference cannot carry: space of any kind, controls, formats (bidi, zero-width). */
+    private val unfit = Regex("[\\s\\p{Z}\\p{C}]")
+
     /** `file` as Glut names it — below the project's folder, else whole — or `null` for a name a reference cannot carry. */
     fun reference(file: VirtualFile): String? {
         if (!file.isInLocalFileSystem) return null
@@ -126,7 +137,6 @@ class Glut(private val project: Project) : Disposable {
         val path = Path.of(file.path)
         val name = if (base != null && path.startsWith(base)) base.relativize(path).toString() else path.toString()
         // A space, a control, bidi or zero-width character would end the reference, act as a key or hide what it names.
-        val unfit = Regex("[\\s\\u0000-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069\\ufeff]")
         return if (unfit.containsMatchIn(name)) null else name
     }
 }
