@@ -29,8 +29,10 @@ anywhere in the project's folder finds the IDE.
 
 ## Actions
 
-*Open Glut* has the key ⌘Esc (Ctrl+Esc on Linux and Windows), a flame in the main toolbar and one in the status bar;
-bind the other actions under *Settings ▸ Keymap ▸ Plug-ins ▸ Glut* the way you like.
+*Open Glut* has the key ⌘Esc (Ctrl+Esc on Linux and Windows), the Glut tool window on the right side bar (its window
+has the buttons), a flame in the main toolbar and one in the status bar; bind the other actions under *Settings ▸
+Keymap ▸ Plug-ins ▸ Glut* the way you like. What you select goes to Glut with your next message by itself; *Send
+Selection* only names it in your text.
 
 | Action | Where | What it does |
 |---|---|---|

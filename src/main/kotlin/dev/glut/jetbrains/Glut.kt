@@ -8,6 +8,7 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
@@ -172,17 +173,22 @@ class SendSelection : AnAction() {
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.project ?: return
         val editor = event.getData(CommonDataKeys.EDITOR) ?: return
-        val file = FileDocumentManager.getInstance().getFile(editor.document) ?: return
-        val glut = project.service<Glut>()
-        val name = glut.reference(file) ?: return
-        val selection = editor.selectionModel
-        val first = editor.document.getLineNumber(selection.selectionStart) + 1
-        val endOffset = selection.selectionEnd
-        val endLine = editor.document.getLineNumber(endOffset)
-        // A selection that ends at a line's start does not take that line.
-        val last = if (endLine + 1 > first && endOffset == editor.document.getLineStartOffset(endLine)) endLine else endLine + 1
-        glut.typeIntoGlut(if (first == last) "@$name#L$first " else "@$name#L$first-$last ")
+        sendSelection(project, editor)
     }
+}
+
+/** `editor`'s selected lines as `@path#L10-22` in Glut's input. */
+fun sendSelection(project: Project, editor: Editor) {
+    val file = FileDocumentManager.getInstance().getFile(editor.document) ?: return
+    val glut = project.service<Glut>()
+    val name = glut.reference(file) ?: return
+    val selection = editor.selectionModel
+    val first = editor.document.getLineNumber(selection.selectionStart) + 1
+    val endOffset = selection.selectionEnd
+    val endLine = editor.document.getLineNumber(endOffset)
+    // A selection that ends at a line's start does not take that line.
+    val last = if (endLine + 1 > first && endOffset == editor.document.getLineStartOffset(endLine)) endLine else endLine + 1
+    glut.typeIntoGlut(if (first == last) "@$name#L$first " else "@$name#L$first-$last ")
 }
 
 /** The current file (or the one the project view's menu was opened on) as `@path` in Glut's input. */

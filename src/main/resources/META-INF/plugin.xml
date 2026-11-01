@@ -24,7 +24,13 @@
         <applicationConfigurable parentId="tools" instance="dev.glut.jetbrains.GlutConfigurable"
                                  id="dev.glut.settings" displayName="Glut"/>
         <statusBarWidgetFactory id="dev.glut.status" implementation="dev.glut.jetbrains.GlutStatusFactory"/>
+        <toolWindow id="Glut" anchor="right" icon="/icons/glut.svg" factoryClass="dev.glut.jetbrains.GlutToolWindow"/>
     </extensions>
+
+    <projectListeners>
+        <listener class="dev.glut.jetbrains.GlutToolWindowShown"
+                  topic="com.intellij.openapi.wm.ex.ToolWindowManagerListener"/>
+    </projectListeners>
 
     <actions>
         <group id="Glut.Menu" text="Glut" popup="true">
