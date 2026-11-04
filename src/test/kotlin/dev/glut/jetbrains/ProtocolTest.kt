@@ -6,6 +6,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.AfterTest
@@ -84,6 +85,15 @@ class ProtocolTest {
         socket.soTimeout = 2000
         socket.getOutputStream().write(bytes.toByteArray())
         runCatching { String(socket.getInputStream().readAllBytes()) }.getOrDefault("")
+    }
+
+    @Test
+    fun `the editor writes where Glut looks, a moved GLUT_HOME but never a relative one`() {
+        assertEquals(Path.of("/moved/home"), LockFile.glutHome("/moved/home"))
+        val home = Path.of(System.getProperty("user.home"))
+        assertEquals(home, LockFile.glutHome("relative"))
+        assertEquals(home, LockFile.glutHome(""))
+        assertEquals(home, LockFile.glutHome(null))
     }
 
     @Test

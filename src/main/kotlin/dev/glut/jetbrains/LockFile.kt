@@ -14,7 +14,15 @@ import java.security.SecureRandom
  * editor left behind when it ended without closing is swept at start.
  */
 object LockFile {
-    fun dir(home: Path = Path.of(System.getProperty("user.home"))): Path = home.resolve(".glut").resolve("ide")
+    /**
+     * The home Glut keeps its files in, as Glut finds it: `$GLUT_HOME` where it names an absolute folder, else the
+     * user's.
+     */
+    fun glutHome(moved: String? = System.getenv("GLUT_HOME")): Path =
+        moved?.takeIf { it.isNotEmpty() }?.let(Path::of)?.takeIf { it.isAbsolute }
+            ?: Path.of(System.getProperty("user.home"))
+
+    fun dir(home: Path = glutHome()): Path = home.resolve(".glut").resolve("ide")
 
     /** A token from the system's random source: 16 bytes as 32 hex characters. */
     fun token(): String {
